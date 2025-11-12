@@ -436,7 +436,6 @@
           const distance = haversine(startLatLng[0], startLatLng[1], coords[0], coords[1]);
           distances.push({
             name: company.name,
-            address: address,
             distance: distance,
             distanceKm: (distance / 1000).toFixed(3)
           });
@@ -446,14 +445,10 @@
       // เรียงลำดับจากใกล้ไปไกล
       distances.sort((a, b) => a.distance - b.distance);
       
-      // สร้างผลลัพธ์
-      let output = `ระยะทางจากจุดเริ่มต้น (${startLatLng[0]}, ${startLatLng[1]}):\n`;
-      output += '=' .repeat(50) + '\n';
+      // สร้างผลลัพธ์แบบสั้น (ชื่อบริษัท + ระยะทาง)
+      let output = '';
       distances.forEach((item, index) => {
-        output += `${index + 1}. ${item.name}\n`;
-        output += `   ระยะทาง: ${item.distanceKm} กิโลเมตร\n`;
-        output += `   ที่อยู่: ${item.address.substring(0, 60)}${item.address.length > 60 ? '...' : ''}\n`;
-        output += '-'.repeat(30) + '\n';
+        output += `${index + 1}. ${item.name} ระยะทาง: ${item.distanceKm} กิโลเมตร\n`;
       });
       
       document.getElementById('results').textContent = output;
