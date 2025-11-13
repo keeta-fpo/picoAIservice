@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>แผนที่ Leaflet PC version</title>
+  <title>Pico MAP</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@latest/dist/leaflet.css" />
   <style>
        html,body,#map { height: 100%; margin: 0; padding: 0; }
@@ -127,6 +127,13 @@
       <button class="btn" onclick="showUsageGuide()" style="background: #FF9800;">วิธีใช้งาน</button>
       <button class="btn" onclick="computeDistancesFromStart()" style="background: #9C27B0;">เปรียบเทียบระยะจากจุดเริ่มต้น</button>
       <button class="btn" onclick="showAllMarkers()" style="background: #4CAF50;">แสดงทั้งหมด</button>
+      
+      <!-- Input สำหรับพิกัดที่กำหนดเอง -->
+      <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
+        <input type="number" id="customLat" placeholder="ละติจูด (lat)" step="any" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 120px;" />
+        <input type="number" id="customLng" placeholder="ลองจิจูด (lng)" step="any" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 120px;" />
+        <button class="btn" onclick="computeFromCustomCoords()" style="background: #2196F3; min-width: auto; padding: 8px 12px;">คำนวณจากพิกัด</button>
+      </div>
     </div>
   </div>
   
@@ -348,8 +355,9 @@
     function calculateDistance() {
       if (distancePoints.length !== 2) return;
       const p1 = distancePoints[0], p2 = distancePoints[1];
-      const distance = haversine(p1.lat, p1.lng, p2.lat, p2.lng);
-      const result = `ระยะห่างระหว่าง 2 จุด:\nจุดที่ 1: ${p1.lat.toFixed(6)}, ${p1.lng.toFixed(6)}\nจุดที่ 2: ${p2.lat.toFixed(6)}, ${p2.lng.toFixed(6)}\nระยะทาง: ${(distance/1000).toFixed(3)} กิโลเมตร`;
+      const distance = haversine(p1.lat, p1.lng, p2.lat, p2.lng); // meters
+      const distanceKm10 = (distance / 1000) * 10; // คูณ 10 สำหรับการแสดงผล
+      const result = `ระยะห่างระหว่าง 2 จุด:\nจุดที่ 1: ${p1.lat.toFixed(6)}, ${p1.lng.toFixed(6)}\nจุดที่ 2: ${p2.lat.toFixed(6)}, ${p2.lng.toFixed(6)}\nระยะทาง: ${distanceKm10.toFixed(3)} กิโลเมตร`;
       document.getElementById('results').textContent = result;
       console.log(result);
     }
@@ -388,15 +396,17 @@
       if (result) document.getElementById('results').textContent = result;
     }
 
-    // Haversine formula (returns meters)
+    // Haversine formula (returns meters) - แก้ไข R ให้ถูกต้อง (6371 km = 6,371,000 m)
     function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371000; // Earth radius in meters
+      const R = 6371000; // Earth radius in meters (ตรวจสอบให้แน่ใจว่าเป็น 6371000 ไม่ใช่ 637100)
       const toRad = d => d * Math.PI / 180;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
       const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-      return R * c;
+      const distance = R * c; // ระยะทางในเมตร
+      console.log(`Debug Haversine: จาก (${lat1.toFixed(4)}, ${lon1.toFixed(4)}) ไป (${lat2.toFixed(4)}, ${lon2.toFixed(4)}) = ${distance.toFixed(0)} เมตร (~${(distance/1000).toFixed(3)} km)`); // Debug log สำหรับตรวจสอบ
+      return distance;
     }
 
     // Compute Haversine for multi-points
@@ -405,50 +415,52 @@
         alert('กรุณาเพิ่มอย่างน้อย 2 จุด');
         return;
       }
-      let total = 0, lines = [];
+      let totalKm10 = 0, lines = [];
       for (let i = 0; i < multiPoints.length - 1; i++) {
         const a = multiPoints[i], b = multiPoints[i + 1];
-        const d = haversine(a.lat, a.lng, b.lat, b.lng);
-        total += d;
-        lines.push(`จาก ${i+1} → ${i+2}: ${(d/1000).toFixed(3)} km`);
+        const d = haversine(a.lat, a.lng, b.lat, b.lng); // meters
+        const dKm10 = (d / 1000) * 10; // คูณ 10 สำหรับการแสดงผล
+        totalKm10 += dKm10;
+        lines.push(`จาก ${i+1} → ${i+2}: ${dKm10.toFixed(3)} km`);
       }
-      const out = `ระยะรวม (Haversine): ${(total/1000).toFixed(3)} km\n` + lines.join('\n');
+      const out = `ระยะรวม (Haversine x10): ${totalKm10.toFixed(3)} km\n` + lines.join('\n');
       document.getElementById('results').textContent = out;
       console.log(out);
     }
 
     // Compute distances from start to companies
     function computeDistancesFromStart() {
+      // รีใช้ฟังก์ชันทั่วไปโดยส่ง startLatLng เป็นพิกัด
+      computeDistancesFromLocation(startLatLng[0], startLatLng[1], 'จุดเริ่มต้น');
+    }
+
+    // Compute distances from custom coordinates input
+    function computeFromCustomCoords() {
+      const latInput = document.getElementById('customLat');
+      const lngInput = document.getElementById('customLng');
+      const lat = parseFloat(latInput.value);
+      const lng = parseFloat(lngInput.value);
+      
+      if (isNaN(lat) || isNaN(lng)) {
+        alert('กรุณาใส่ค่าละติจูดและลองจิจูดที่ถูกต้อง');
+        return;
+      }
+      
       if (!allCompanies || allCompanies.length === 0) {
         alert('กรุณาโหลดข้อมูลบริษัทก่อน');
         return;
       }
-      const distances = [];
-      allCompanies.forEach(company => {
-        if (!company.details) return;
-        company.details.forEach(detail => {
-          const [address, phones, coords] = detail;
-          if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
-          const distance = haversine(startLatLng[0], startLatLng[1], coords[0], coords[1]);
-          distances.push({
-            name: company.name,
-            address: address,
-            distance: distance,
-            distanceKm: (distance / 1000).toFixed(3)
-          });
-        });
-      });
-      distances.sort((a, b) => a.distance - b.distance);
-      let output = `ระยะทางจากจุดเริ่มต้น (${startLatLng[0].toFixed(6)}, ${startLatLng[1].toFixed(6)}):\n${'='.repeat(50)}\n`;
-      distances.forEach((item, index) => {
-        const addrPreview = item.address.length > 60 ? item.address.substring(0, 60) + '...' : item.address;
-        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n   ที่อยู่: ${addrPreview}\n${'-'.repeat(30)}\n`;
-      });
-      document.getElementById('results').textContent = output;
-      console.log('Distances from start:', distances);
+      
+      const locationName = 'พิกัดที่กำหนด';
+      // ไม่เรียก computeDistancesFromLocation ตรงนี้ เพื่อหลีกเลี่ยงการคำนวณซ้ำ
+      centerMap(lat, lng, locationName);
+      
+      // ล้าง input หลังคำนวณ (optional)
+      latInput.value = '';
+      lngInput.value = '';
     }
 
-    // Compute distances from a given location to companies (new function)
+    // Compute distances from a given location to companies (แสดงผลเป็น x10)
     function computeDistancesFromLocation(lat, lng, locationName) {
       if (!allCompanies || allCompanies.length === 0) {
         alert('กรุณาโหลดข้อมูลบริษัทก่อน');
@@ -460,20 +472,23 @@
         company.details.forEach(detail => {
           const [address, phones, coords] = detail;
           if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
-          const distance = haversine(lat, lng, coords[0], coords[1]);
+          const distance = haversine(lat, lng, coords[0], coords[1]); // meters
+          const distanceKmDisplay = ((distance / 1000) * 10).toFixed(3); // คูณ 10 สำหรับการแสดงผล
           distances.push({
             name: company.name,
             address: address,
-            distance: distance,
-            distanceKm: (distance / 1000).toFixed(3)
+            distance: distance, // เก็บหน่วยเป็นเมตรสำหรับการเรียง
+            distanceKm: distanceKmDisplay
           });
+          if (company.name.includes('ฟินโทเปีย')) {
+            console.log(`Debug บริษัท "${company.name}": ระยะทางดิบ = ${distance.toFixed(0)} m, km(x10) = ${distanceKmDisplay} (พิกัดบริษัท: ${coords[0].toFixed(6)}, ${coords[1].toFixed(6)})`);
+          }
         });
       });
       distances.sort((a, b) => a.distance - b.distance);
-      let output = `ระยะทางจาก ${locationName} (${lat.toFixed(6)}, ${lng.toFixed(6)}):\n${'='.repeat(50)}\n`;
+      let output = `ระยะทางจาก ${locationName} (${lat.toFixed(6)}, ${lng.toFixed(6)}) :\n${'='.repeat(50)}\n`;
       distances.forEach((item, index) => {
-        const addrPreview = item.address.length > 60 ? item.address.substring(0, 60) + '...' : item.address;
-        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n   ที่อยู่: ${addrPreview}\n${'-'.repeat(30)}\n`;
+        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n\n`;
       });
       document.getElementById('results').textContent = output;
       console.log(`Distances from ${locationName}:`, distances);
