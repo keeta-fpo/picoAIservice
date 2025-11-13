@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Pico MAP</title>
+  <title>แผนที่ Leaflet PC version</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@latest/dist/leaflet.css" />
   <style>
        html,body,#map { height: 100%; margin: 0; padding: 0; }
@@ -127,6 +127,7 @@
       <button class="btn" onclick="showUsageGuide()" style="background: #FF9800;">วิธีใช้งาน</button>
       <button class="btn" onclick="computeDistancesFromStart()" style="background: #9C27B0;">เปรียบเทียบระยะจากจุดเริ่มต้น</button>
       <button class="btn" onclick="showAllMarkers()" style="background: #4CAF50;">แสดงทั้งหมด</button>
+      <button class="btn" onclick="showTop3Closest()" style="background: #FF5722;">3 อันดับใกล้สุด</button>
       
       <!-- Input สำหรับพิกัดที่กำหนดเอง -->
       <div style="display: flex; gap: 5px; align-items: center; flex-wrap: wrap; margin-top: 10px;">
@@ -161,7 +162,7 @@
   <script>
     // CONFIG: ปรับไฟล์ข้อมูลและลักษณะ marker ได้จากบล็อกนี้
     const CONFIG = {
-      dataFile: 'df_bkk.jsonl',
+      dataFile: '6com.jsonl',
       marker: {
         radius: 8,
         fillOpacity: 0.85,
@@ -473,7 +474,7 @@
           const [address, phones, coords] = detail;
           if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
           const distance = haversine(lat, lng, coords[0], coords[1]); // meters
-          const distanceKmDisplay = ((distance / 1000) * 10).toFixed(3); // คูณ 10 สำหรับการแสดงผล
+          const distanceKmDisplay = (distance / 1000).toFixed(3); // ลบ *10
           distances.push({
             name: company.name,
             address: address,
@@ -544,6 +545,101 @@
       const modal = document.getElementById('usageModal');
       if (event.target === modal) modal.style.display = 'none';
     };
+
+    // แสดง 3 บริษัทใกล้สุดจากตำแหน่งปัจจุบัน (ใช้ center ของแผนที่ ถ้าไม่มีใช้ startLatLng)
+    function showTop3Closest() {
+      if (!allCompanies || allCompanies.length === 0) {
+        alert('กรุณาโหลดข้อมูลบริษัทก่อน');
+        return;
+      }
+      
+      // ใช้ตำแหน่งกลางแผนที่ปัจจุบัน หรือ fallback ไป startLatLng
+      const currentCenter = map.getCenter();
+      const lat = currentCenter.lat;
+      const lng = currentCenter.lng;
+      const locationName = 'ตำแหน่งปัจจุบัน';
+      
+      const distances = [];
+      allCompanies.forEach(company => {
+        if (!company.details) return;
+        company.details.forEach(detail => {
+          const [address, phones, coords] = detail;
+          if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
+          const distance = haversine(lat, lng, coords[0], coords[1]); // meters
+          const distanceKmDisplay = (distance / 1000).toFixed(3); // ลบ *10 เพื่อใช้ระยะจริง (สอดคล้องกับ computeDistancesFromLocation)
+          distances.push({
+            name: company.name,
+            address: address,
+            coords: coords, // เก็บพิกัดเพื่อสร้าง marker
+            distance: distance, // สำหรับเรียง
+            distanceKm: distanceKmDisplay
+          });
+        });
+      });
+      
+      if (distances.length === 0) {
+        document.getElementById('results').textContent = 'ไม่มีข้อมูลบริษัทที่คำนวณได้';
+        return;
+      }
+      
+      distances.sort((a, b) => a.distance - b.distance);
+      const top3 = distances.slice(0, 3); // เลือก 3 อันดับแรก
+      
+      // ล้าง markers เก่า
+      companyLayer.clearLayers();
+      
+      // สร้าง markers สำหรับ top 3 เท่านั้น
+      top3.forEach((item, index) => {
+        const popupContent = `
+          <div class="info-popup">
+            <h3>${item.name}</h3>
+            <p class="address"><strong>ที่อยู่:</strong> ${item.address}</p>
+            <p><strong>อันดับ:</strong> ${index + 1} (ใกล้สุด)</p>
+            <p><strong>ระยะทาง:</strong> ${item.distanceKm} กิโลเมตร</p>
+          </div>
+        `;
+
+        const fillColor = CONFIG.marker.useBlack ? 'black' : undefined;
+        const strokeColor = CONFIG.marker.useBlack ? 'black' : undefined;
+        const circle = L.circleMarker([item.coords[0], item.coords[1]], {
+          radius: CONFIG.marker.radius,
+          color: strokeColor,
+          fillColor: fillColor,
+          fillOpacity: CONFIG.marker.fillOpacity,
+          weight: CONFIG.marker.weight
+        }).addTo(companyLayer);
+
+        circle.bindPopup(popupContent);
+        if (CONFIG.marker.hoverOpenPopup) {
+          circle.on('mouseover', () => circle.openPopup());
+          circle.on('mouseout', () => circle.closePopup());
+        }
+        
+        // เปิด popup อัตโนมัติสำหรับอันดับ 1
+        if (index === 0) {
+          circle.openPopup();
+        }
+      });
+      
+      // ปรับแผนที่ให้พอดีกับ top 3 markers + จุดปัจจุบัน (ถ้ามีมากกว่า 1 จุด)
+      if (top3.length > 1) {
+        const bounds = L.latLngBounds(top3.map(item => [item.coords[0], item.coords[1]]));
+        bounds.extend([lat, lng]); // รวมจุดปัจจุบัน
+        map.fitBounds(bounds, { padding: [20, 20], maxZoom: 15 });
+      } else if (top3.length === 1) {
+        map.setView([top3[0].coords[0], top3[0].coords[1]], 14);
+      }
+      
+      let output = `3 บริษัทใกล้สุดจาก ${locationName} (${lat.toFixed(6)}, ${lng.toFixed(6)}):\n${'='.repeat(40)}\n`;
+      top3.forEach((item, index) => {
+        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n\n`;
+      });
+      if (distances.length > 3) {
+        output += `... และ ${distances.length - 3} บริษัทอื่น ๆ`;
+      }
+      document.getElementById('results').textContent = output;
+      console.log('Top 3 closest:', top3);
+    }
 
     // Initialize on load
     document.addEventListener('DOMContentLoaded', initMap);
