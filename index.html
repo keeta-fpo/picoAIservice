@@ -115,7 +115,10 @@
   <div class="control-panel">
     <label>สถานที่ที่เลือกได้:</label>
     <div class="location-buttons">
-      <button class="btn" onclick="centerMap(13.7563, 100.5018, 'กรุงเทพฯ')">กระทรวงการคลัง</button>
+      <button class="btn" onclick="loadCompanyData()" style="background: #FFC107;">โหลดข้อมูลบริษัท</button>
+      <button class="btn" onclick="centerMap(13.7563, 100.5018, 'อนุสาวรีย์')">อนุสาวรีย์(ศูนย์กลาง กทม.)</button>
+      <button class="btn" onclick="centerMap(13.7818401,100.532494, 'กระทรวงการคลัง')">กระทรวงการคลัง</button>
+
       <!-- <button class="btn" onclick="centerMap(13.8600, 100.5140, 'นนทบุรี')">นนทบุรี</button> -->
       <button class="btn" id="toggle-distance" onclick="toggleDistanceMode()">คำนวณระยะห่าง 2 จุด</button>
       <button class="btn" id="toggle-add" onclick="toggleAddPoints()">คำนวนระยะทางหลายจุด</button>
@@ -123,6 +126,7 @@
       <button class="btn" onclick="clearPoints()">ล้างจุดทั้งหมด</button>
       <button class="btn" onclick="showUsageGuide()" style="background: #FF9800;">วิธีใช้งาน</button>
       <button class="btn" onclick="computeDistancesFromStart()" style="background: #9C27B0;">เปรียบเทียบระยะจากจุดเริ่มต้น</button>
+      <button class="btn" onclick="showAllMarkers()" style="background: #4CAF50;">แสดงทั้งหมด</button>
     </div>
   </div>
   
@@ -148,169 +152,181 @@
   </div>
 
   <script>
-      // CONFIG: ปรับไฟล์ข้อมูลและลักษณะ marker ได้จากบล็อกนี้
-      const CONFIG = {
-        dataFile: '6com.jsonl',
-        marker: {
-          radius: 8,
-          fillOpacity: 0.85,
-          weight: 1,
-          hoverOpenPopup: true,
-          useBlack: true    // true = ใช้วงกลมสีดำทั้งขอบและเติม
-        }
-      };
-
-      // ฟังก์ชันเพิ่ม markers ของบริษัทจากข้อมูล JSONL
-      function addCompanyMarkers(companies) {
-        companies.forEach((company, i) => {
-          if (!company.details) return;
-          company.details.forEach(detail => {
-            const [address, phones, coords] = detail;
-            if (!Array.isArray(coords) || (coords[0] === 0 && coords[1] === 0)) return;
-
-            const popupContent = `
-              <div class="info-popup">
-                <h3>${company.name}</h3>
-                <p class="address"><strong>ที่อยู่:</strong> ${address}</p>
-                <p class="phones"><strong>โทร:</strong> ${phones}</p>
-                <p class="date"><strong>วันที่:</strong> ${company.date}</p>
-                <p><strong>เลขที่ใบอนุญาติ:</strong> ${company.case_id}</p>
-              </div>
-            `;
-
-            // สร้าง circleMarker — ใช้สีดำตาม CONFIG.marker.useBlack
-            const fill = CONFIG.marker.useBlack ? 'black' : undefined;
-            const stroke = CONFIG.marker.useBlack ? 'black' : undefined;
-            const circle = L.circleMarker([coords[0], coords[1]], {
-              radius: CONFIG.marker.radius,
-              color: stroke,
-              fillColor: fill,
-              fillOpacity: CONFIG.marker.fillOpacity,
-              weight: CONFIG.marker.weight
-            }).addTo(map);
-
-            circle.bindPopup(popupContent);
-            if (CONFIG.marker.hoverOpenPopup) {
-              circle.on('mouseover', () => circle.openPopup());
-              circle.on('mouseout', () => circle.closePopup());
-            }
-          });
-        });
+    // CONFIG: ปรับไฟล์ข้อมูลและลักษณะ marker ได้จากบล็อกนี้
+    const CONFIG = {
+      dataFile: 'df_bkk.jsonl',
+      marker: {
+        radius: 8,
+        fillOpacity: 0.85,
+        weight: 1,
+        hoverOpenPopup: true,
+        useBlack: true    // true = ใช้วงกลมสีดำทั้งขอบและเติม
       }
-
-      // โหลดข้อมูล JSONL (one JSON object per line) แล้วเพิ่ม markers
-      async function loadCompanyData() {
-        const resultsEl = document.getElementById('results');
-        resultsEl.textContent = 'กำลังโหลดข้อมูลบริษัท...';
-        try {
-          const resp = await fetch(CONFIG.dataFile);
-          const txt = await resp.text();
-          const lines = txt.trim() ? txt.trim().split('\n') : [];
-          const companies = lines.map(l => JSON.parse(l));
-          addCompanyMarkers(companies);
-          // ยืนยันให้แผนที่กลับไปที่จุดเริ่มต้นเสมอหลังโหลดข้อมูล
-          if (typeof startLatLng !== 'undefined' && map) {
-            map.setView(startLatLng, 12);
-          }
-         // เก็บข้อมูลบริษัทไว้สำหรับคำนวณระยะทาง
-         window.allCompanies = companies;
-          resultsEl.textContent = `โหลดข้อมูลบริษัท ${companies.length} รายการ`;
-        } catch (err) {
-          console.error('Error loading company data:', err);
-          resultsEl.textContent = 'เกิดข้อผิดพลาดในการโหลดข้อมูลบริษัท';
-        }
-      }
-
-      // ตั้งค่าเริ่มต้น: กรุงเทพฯ (ใช้เสมอ)
-      const startLatLng = [13.7563, 100.5018];
-      const map = L.map('map', { center: startLatLng, zoom: 12 });
-      // โหลดข้อมูลบริษัทหลังจาก map ถูกสร้างและพร้อมใช้งาน
-      // เรียกโหลดข้อมูล โดยจะบังคับให้ map กลับไปที่ startLatLng หลังโหลดเสร็จ
-      loadCompanyData();
-    // ตัวแปรจัดการจุดหลายจุด
-    let addingPoints = false;
-    let distanceMode = false;
-    let multiPoints = [];   // array ของ {lat, lng}
-    let multiMarkers = [];
-    let distancePoints = []; // สำหรับเก็บ 2 จุดสำหรับคำนวณระยะห่าง
-    let distanceMarkers = []; // มาร์กเกอร์สำหรับจุดระยะห่าง
-    let distanceLine = null; // เส้นเชื่อมระหว่าง 2 จุด
-    
-    // ชั้นแผนที่พื้นฐานที่เลือกได้ (ใช้ leaflet-providers)
-    const baseLayers = {
-      "OpenStreetMap": L.tileLayer.provider('OpenStreetMap.Mapnik').addTo(map),
-      "CartoDB Positron": L.tileLayer.provider('CartoDB.Positron'),
-      "Esri WorldImagery": L.tileLayer.provider('Esri.WorldImagery')
     };
-    L.control.layers(baseLayers).addTo(map);
 
-    // เพิ่มเครื่องมือมาตรวัด
-    L.control.scale({ metric: true, imperial: false }).addTo(map);
-
-    // มาร์กเกอร์ตัวอย่างและป๊อปอัพ
-    L.marker(startLatLng).addTo(map)
-      .bindPopup('<b>กรุงเทพฯ</b><br>ตำแหน่งเริ่มต้น').openPopup();
-
-    // ตัวแปรสำหรับอนิเมชัน
+    // Global state management
+    let map, companyLayer, allCompanyMarkers = [], allCompanies = [];
+    let addingPoints = false, distanceMode = false;
+    let multiPoints = [], multiMarkers = [];
+    let distancePoints = [], distanceMarkers = [], distanceLine = null;
     let centerMarker = null;
-    
-    // แสดงคู่มือการใช้งาน
-    function showUsageGuide() {
-      document.getElementById('usageModal').style.display = 'block';
+
+    // ตั้งค่าเริ่มต้น: กรุงเทพฯ (ใช้เสมอ)
+    const startLatLng = [13.7818401, 100.532494];
+
+    // Initialize map
+    function initMap() {
+      map = L.map('map', { center: startLatLng, zoom: 12 });
+      
+      // Base layers
+      const baseLayers = {
+        "OpenStreetMap": L.tileLayer.provider('OpenStreetMap.Mapnik').addTo(map),
+        "CartoDB Positron": L.tileLayer.provider('CartoDB.Positron'),
+        "Esri WorldImagery": L.tileLayer.provider('Esri.WorldImagery')
+      };
+      L.control.layers(baseLayers).addTo(map);
+
+      // Scale control
+      L.control.scale({ metric: true, imperial: false }).addTo(map);
+
+      // Company layer group
+      companyLayer = L.layerGroup().addTo(map);
+
+      // Default marker
+      L.marker(startLatLng).addTo(map)
+        .bindPopup(`<b>จุดเริ่มต้น</b><br>${startLatLng[0].toFixed(6)}, ${startLatLng[1].toFixed(6)}`).openPopup();
+
+      // Map click handler
+      map.on('click', function(e) {
+        if (addingPoints) {
+          addPoint(e.latlng);
+          updateResults();
+        } else if (distanceMode) {
+          addDistancePoint(e.latlng);
+        } else {
+          L.popup()
+            .setLatLng(e.latlng)
+            .setContent(`พิกัด: ${e.latlng.lat.toFixed(6)}, ${e.latlng.lng.toFixed(6)}`)
+            .openOn(map);
+        }
+      });
+
+      console.log('แผนที่ Dynamic Center พร้อมใช้งานแล้ว!');
     }
-    
-    // ปิดคู่มือการใช้งาน
-    function closeUsageGuide() {
-      document.getElementById('usageModal').style.display = 'none';
+
+    // Add company markers to layer
+    function addCompanyMarkers(companies) {
+      companyLayer.clearLayers();
+      allCompanyMarkers = [];
+      companies.forEach(company => {
+        if (!company.details) return;
+        company.details.forEach(detail => {
+          const [address, phones, coords] = detail;
+          if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
+
+          const popupContent = `
+            <div class="info-popup">
+              <h3>${company.name}</h3>
+              <p class="address"><strong>ที่อยู่:</strong> ${address}</p>
+              <p class="phones"><strong>โทร:</strong> ${phones}</p>
+              <p class="date"><strong>วันที่:</strong> ${company.date}</p>
+              <p><strong>เลขที่ใบอนุญาต:</strong> ${company.case_id}</p>
+            </div>
+          `;
+
+          const fillColor = CONFIG.marker.useBlack ? 'black' : undefined;
+          const strokeColor = CONFIG.marker.useBlack ? 'black' : undefined;
+          const circle = L.circleMarker([coords[0], coords[1]], {
+            radius: CONFIG.marker.radius,
+            color: strokeColor,
+            fillColor: fillColor,
+            fillOpacity: CONFIG.marker.fillOpacity,
+            weight: CONFIG.marker.weight
+          }).addTo(companyLayer);
+
+          circle.bindPopup(popupContent);
+          if (CONFIG.marker.hoverOpenPopup) {
+            circle.on('mouseover', () => circle.openPopup());
+            circle.on('mouseout', () => circle.closePopup());
+          }
+          allCompanyMarkers.push(circle);
+        });
+      });
+      console.log(`เพิ่ม markers สำหรับ ${companies.length} บริษัท`);
     }
-    
-    // สลับโหมดเพิ่มจุดบนแผนที่
+
+    // Load company data from JSONL
+    async function loadCompanyData() {
+      const resultsEl = document.getElementById('results');
+      resultsEl.textContent = 'กำลังโหลดข้อมูลบริษัท...';
+      try {
+        const resp = await fetch(CONFIG.dataFile);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+        const txt = await resp.text();
+        const lines = txt.trim().split('\n').filter(line => line.trim());
+        const companies = lines.map(line => {
+          try {
+            return JSON.parse(line);
+          } catch (e) {
+            console.warn('Invalid JSON line:', line, e);
+            return null;
+          }
+        }).filter(c => c);
+
+        if (companies.length === 0) throw new Error('ไม่มีข้อมูลบริษัทในไฟล์');
+
+        allCompanies = companies;
+        addCompanyMarkers(companies);
+        map.setView(startLatLng, 12);
+        resultsEl.textContent = `โหลดข้อมูลบริษัท ${companies.length} รายการสำเร็จ`;
+      } catch (err) {
+        console.error('Error loading company data:', err);
+        resultsEl.textContent = `เกิดข้อผิดพลาด: ${err.message}\nตรวจสอบไฟล์ ${CONFIG.dataFile}`;
+      }
+    }
+
+    // Toggle add points mode
     function toggleAddPoints() {
       addingPoints = !addingPoints;
       distanceMode = false;
-      document.getElementById('toggle-add').textContent = addingPoints ? 'ยกเลิกเพิ่มจุด' : 'เพิ่มจุด';
-      document.getElementById('toggle-add').classList.toggle('active', addingPoints);
+      const btn = document.getElementById('toggle-add');
+      btn.textContent = addingPoints ? 'ยกเลิกเพิ่มจุด' : 'คำนวนระยะทางหลายจุด';
+      btn.classList.toggle('active', addingPoints);
       document.getElementById('toggle-distance').classList.remove('active');
       map.getContainer().style.cursor = addingPoints ? 'crosshair' : '';
       updateResults();
     }
-    
-    // สลับโหมดคำนวณระยะห่างระหว่าง 2 จุด
+
+    // Toggle distance mode
     function toggleDistanceMode() {
       distanceMode = !distanceMode;
       addingPoints = false;
-      document.getElementById('toggle-distance').textContent = distanceMode ? 'ยกเลิกคำนวณระยะ' : 'คำนวณระยะห่าง 2 จุด';
-      document.getElementById('toggle-distance').classList.toggle('active', distanceMode);
+      const btn = document.getElementById('toggle-distance');
+      btn.textContent = distanceMode ? 'ยกเลิกคำนวณระยะ' : 'คำนวณระยะห่าง 2 จุด';
+      btn.classList.toggle('active', distanceMode);
       document.getElementById('toggle-add').classList.remove('active');
       map.getContainer().style.cursor = distanceMode ? 'crosshair' : '';
       updateResults();
-      
-      if (!distanceMode) {
-        clearDistancePoints();
-      }
+      if (!distanceMode) clearDistancePoints();
     }
-    
-    // เพิ่มมาร์กเมื่อคลิก (เก็บเป็นค่า lat/lng)
+
+    // Add point for multi-points
     function addPoint(latlng) {
       multiPoints.push({ lat: latlng.lat, lng: latlng.lng });
-      const m = L.marker([latlng.lat, latlng.lng]).addTo(map)
+      const marker = L.marker([latlng.lat, latlng.lng]).addTo(map)
         .bindPopup(`จุด ${multiPoints.length}<br>${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`);
-      multiMarkers.push(m);
+      multiMarkers.push(marker);
     }
-    
-    // เพิ่มจุดสำหรับคำนวณระยะห่าง
+
+    // Add point for distance calculation
     function addDistancePoint(latlng) {
-      // ถ้ามีจุดแล้ว 2 จุด ให้เริ่มใหม่
-      if (distancePoints.length >= 2) {
-        clearDistancePoints();
-      }
-      
+      if (distancePoints.length >= 2) clearDistancePoints();
       distancePoints.push({ lat: latlng.lat, lng: latlng.lng });
       const pointNumber = distancePoints.length;
-      const m = L.marker([latlng.lat, latlng.lng], {
+      const color = pointNumber === 1 ? 'blue' : 'red';
+      const marker = L.marker([latlng.lat, latlng.lng], {
         icon: L.icon({
-          iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-' + 
-                  (pointNumber === 1 ? 'blue' : 'red') + '.png',
+          iconUrl: `https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-${color}.png`,
           shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
           iconSize: [25, 41],
           iconAnchor: [12, 41],
@@ -319,37 +335,28 @@
         })
       }).addTo(map)
         .bindPopup(`จุดที่ ${pointNumber}<br>${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}`);
-      distanceMarkers.push(m);
-      
-      // ถ้ามี 2 จุดแล้ว ให้คำนวณระยะห่างและวาดเส้น
+      distanceMarkers.push(marker);
+
       if (distancePoints.length === 2) {
         calculateDistance();
         drawDistanceLine();
       }
-      
       updateResults();
     }
-    
-    // คำนวณระยะห่างระหว่าง 2 จุด
+
+    // Calculate distance between two points
     function calculateDistance() {
       if (distancePoints.length !== 2) return;
-      
-      const p1 = distancePoints[0];
-      const p2 = distancePoints[1];
+      const p1 = distancePoints[0], p2 = distancePoints[1];
       const distance = haversine(p1.lat, p1.lng, p2.lat, p2.lng);
-      
       const result = `ระยะห่างระหว่าง 2 จุด:\nจุดที่ 1: ${p1.lat.toFixed(6)}, ${p1.lng.toFixed(6)}\nจุดที่ 2: ${p2.lat.toFixed(6)}, ${p2.lng.toFixed(6)}\nระยะทาง: ${(distance/1000).toFixed(3)} กิโลเมตร`;
-      
       document.getElementById('results').textContent = result;
       console.log(result);
     }
-    
-    // วาดเส้นเชื่อมระหว่าง 2 จุด
+
+    // Draw line between distance points
     function drawDistanceLine() {
-      if (distanceLine) {
-        map.removeLayer(distanceLine);
-      }
-      
+      if (distanceLine) map.removeLayer(distanceLine);
       if (distancePoints.length === 2) {
         distanceLine = L.polyline([
           [distancePoints[0].lat, distancePoints[0].lng],
@@ -357,8 +364,8 @@
         ], {color: 'blue', weight: 3, opacity: 0.7, dashArray: '10, 10'}).addTo(map);
       }
     }
-    
-    // ล้างจุดสำหรับคำนวณระยะห่าง
+
+    // Clear distance points
     function clearDistancePoints() {
       distancePoints = [];
       distanceMarkers.forEach(marker => map.removeLayer(marker));
@@ -368,49 +375,40 @@
         distanceLine = null;
       }
     }
-    
-    // อัปเดตผลลัพธ์
+
+    // Update results display
     function updateResults() {
       let result = '';
-      
       if (distanceMode) {
-        if (distancePoints.length === 0) {
-          result = 'กรุณาคลิกเพื่อเลือกจุดที่ 1';
-        } else if (distancePoints.length === 1) {
-          result = 'กรุณาคลิกเพื่อเลือกจุดที่ 2';
-        }
+        if (distancePoints.length === 0) result = 'กรุณาคลิกเพื่อเลือกจุดที่ 1';
+        else if (distancePoints.length === 1) result = 'กรุณาคลิกเพื่อเลือกจุดที่ 2';
       } else if (addingPoints) {
         result = `เพิ่มแล้ว ${multiPoints.length} จุด\nคลิกบนแผนที่เพื่อเพิ่มจุด`;
       }
-      
-      if (result) {
-        document.getElementById('results').textContent = result;
-      }
+      if (result) document.getElementById('results').textContent = result;
     }
 
-    // Haversine formula (คืนเมตร)
+    // Haversine formula (returns meters)
     function haversine(lat1, lon1, lat2, lon2) {
-      const R = 6371000; // เมตร
+      const R = 6371000; // Earth radius in meters
       const toRad = d => d * Math.PI / 180;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
-      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
-      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
     }
 
-    // คำนวณระยะด้วย Haversine สำหรับชุดจุดที่เพิ่ม (ตามลำดับ)
+    // Compute Haversine for multi-points
     function computeHaversine() {
       if (multiPoints.length < 2) {
         alert('กรุณาเพิ่มอย่างน้อย 2 จุด');
         return;
       }
-      let total = 0;
-      let lines = [];
+      let total = 0, lines = [];
       for (let i = 0; i < multiPoints.length - 1; i++) {
-        const a = multiPoints[i];
-        const b = multiPoints[i+1];
-        const d = haversine(a.lat, a.lng, b.lat, b.lng); // เมตร
+        const a = multiPoints[i], b = multiPoints[i + 1];
+        const d = haversine(a.lat, a.lng, b.lat, b.lng);
         total += d;
         lines.push(`จาก ${i+1} → ${i+2}: ${(d/1000).toFixed(3)} km`);
       }
@@ -418,44 +416,82 @@
       document.getElementById('results').textContent = out;
       console.log(out);
     }
-    
-    // คำนวณระยะทางจากจุดเริ่มต้นไปยังบริษัททั้งหมด
+
+    // Compute distances from start to companies
     function computeDistancesFromStart() {
-      if (!window.allCompanies || window.allCompanies.length === 0) {
+      if (!allCompanies || allCompanies.length === 0) {
         alert('กรุณาโหลดข้อมูลบริษัทก่อน');
         return;
       }
-      
       const distances = [];
-      window.allCompanies.forEach(company => {
+      allCompanies.forEach(company => {
         if (!company.details) return;
         company.details.forEach(detail => {
           const [address, phones, coords] = detail;
-          if (!Array.isArray(coords) || (coords[0] === 0 && coords[1] === 0)) return;
-          
+          if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
           const distance = haversine(startLatLng[0], startLatLng[1], coords[0], coords[1]);
           distances.push({
             name: company.name,
+            address: address,
             distance: distance,
             distanceKm: (distance / 1000).toFixed(3)
           });
         });
       });
-      
-      // เรียงลำดับจากใกล้ไปไกล
       distances.sort((a, b) => a.distance - b.distance);
-      
-      // สร้างผลลัพธ์แบบสั้น (ชื่อบริษัท + ระยะทาง)
-      let output = '';
+      let output = `ระยะทางจากจุดเริ่มต้น (${startLatLng[0].toFixed(6)}, ${startLatLng[1].toFixed(6)}):\n${'='.repeat(50)}\n`;
       distances.forEach((item, index) => {
-        output += `${index + 1}. ${item.name} ระยะทาง: ${item.distanceKm} กิโลเมตร\n`;
+        const addrPreview = item.address.length > 60 ? item.address.substring(0, 60) + '...' : item.address;
+        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n   ที่อยู่: ${addrPreview}\n${'-'.repeat(30)}\n`;
       });
-      
       document.getElementById('results').textContent = output;
       console.log('Distances from start:', distances);
     }
-    
-    // ล้างจุดทั้งหมด
+
+    // Compute distances from a given location to companies (new function)
+    function computeDistancesFromLocation(lat, lng, locationName) {
+      if (!allCompanies || allCompanies.length === 0) {
+        alert('กรุณาโหลดข้อมูลบริษัทก่อน');
+        return;
+      }
+      const distances = [];
+      allCompanies.forEach(company => {
+        if (!company.details) return;
+        company.details.forEach(detail => {
+          const [address, phones, coords] = detail;
+          if (!Array.isArray(coords) || coords[0] === 0 || coords[1] === 0) return;
+          const distance = haversine(lat, lng, coords[0], coords[1]);
+          distances.push({
+            name: company.name,
+            address: address,
+            distance: distance,
+            distanceKm: (distance / 1000).toFixed(3)
+          });
+        });
+      });
+      distances.sort((a, b) => a.distance - b.distance);
+      let output = `ระยะทางจาก ${locationName} (${lat.toFixed(6)}, ${lng.toFixed(6)}):\n${'='.repeat(50)}\n`;
+      distances.forEach((item, index) => {
+        const addrPreview = item.address.length > 60 ? item.address.substring(0, 60) + '...' : item.address;
+        output += `${index + 1}. ${item.name}\n   ระยะทาง: ${item.distanceKm} กิโลเมตร\n   ที่อยู่: ${addrPreview}\n${'-'.repeat(30)}\n`;
+      });
+      document.getElementById('results').textContent = output;
+      console.log(`Distances from ${locationName}:`, distances);
+    }
+
+    // Show all company markers
+    function showAllMarkers() {
+      if (allCompanyMarkers.length === 0) {
+        document.getElementById('results').textContent = 'ไม่มีข้อมูลบริษัท โปรดโหลดข้อมูลก่อน';
+        return;
+      }
+      companyLayer.clearLayers();
+      allCompanyMarkers.forEach(marker => marker.addTo(companyLayer));
+      map.setView(startLatLng, 12);
+      document.getElementById('results').textContent = 'แสดง markers ทั้งหมดแล้ว';
+    }
+
+    // Clear all points
     function clearPoints() {
       multiPoints = [];
       multiMarkers.forEach(marker => map.removeLayer(marker));
@@ -463,18 +499,11 @@
       clearDistancePoints();
       document.getElementById('results').textContent = 'ล้างจุดทั้งหมดแล้ว';
     }
-    
-    // ฟังก์ชันสำหรับย้ายศูนย์กลางแผนที่ไปยังตำแหน่งที่กำหนด
+
+    // Center map to location (updated to compute distances from new location)
     function centerMap(lat, lng, locationName) {
       const newLatLng = [lat, lng];
-      
-      // ย้ายแผนที่ไปยังตำแหน่งใหม่พร้อมอนิเมชัน
-      map.flyTo(newLatLng, 12, {
-        animate: true,
-        duration: 1.2
-      });
-      
-      // อัพเดทหรือสร้างมาร์กเกอร์ศูนย์กลาง
+      map.flyTo(newLatLng, 12, { animate: true, duration: 1.2 });
       if (centerMarker) {
         centerMarker.setLatLng(newLatLng);
         centerMarker.setPopupContent(`<b>${locationName}</b>`);
@@ -482,32 +511,27 @@
         centerMarker = L.marker(newLatLng).addTo(map)
           .bindPopup(`<b>${locationName}</b>`).openPopup();
       }
+      // คำนวณระยะห่างจากตำแหน่งใหม่ (ถ้ามีข้อมูลบริษัท)
+      computeDistancesFromLocation(lat, lng, locationName);
     }
-    
-    // เมื่อคลิกที่แผนที่ ให้เพิ่มจุดถ้าโหมดเพิ่มจุดเปิดอยู่ มิฉะนั้นแสดงพิกัด
-    map.on('click', function(e) {
-      if (addingPoints) {
-        addPoint(e.latlng);
-        updateResults();
-      } else if (distanceMode) {
-        addDistancePoint(e.latlng);
-      } else {
-        L.popup()
-          .setLatLng(e.latlng)
-          .setContent('พิกัด: ' + e.latlng.lat.toFixed(6) + ', ' + e.latlng.lng.toFixed(6))
-          .openOn(map);
-      }
-    });
-    
-    // ปิด modal เมื่อคลิกนอกพื้นที่ modal
+
+    // Usage guide modal
+    function showUsageGuide() {
+      document.getElementById('usageModal').style.display = 'block';
+    }
+
+    function closeUsageGuide() {
+      document.getElementById('usageModal').style.display = 'none';
+    }
+
+    // Close modal on outside click
     window.onclick = function(event) {
       const modal = document.getElementById('usageModal');
-      if (event.target == modal) {
-        modal.style.display = 'none';
-      }
-    }
-    
-    console.log('แผนที่ Dynamic Center พร้อมใช้งานแล้ว!');
+      if (event.target === modal) modal.style.display = 'none';
+    };
+
+    // Initialize on load
+    document.addEventListener('DOMContentLoaded', initMap);
   </script>
-  </body>
+</body>
 </html>
